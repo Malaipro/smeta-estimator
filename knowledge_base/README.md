@@ -14,11 +14,12 @@
 4. `10_product/section_presets.md` — разделы и готовые комплектации.
 5. `10_product/input_parameters.md` — вводимые параметры.
 6. `20_methodology/preliminary_estimate_method.md` — расчётный подход.
-7. `20_methodology/plan_and_image_recognition.md` — будущая функция работы с планами и изображениями.
-8. `30_outputs/excel_output.md` — требования к Excel.
-9. `00_project/open_questions.md` — решения, которые ещё нельзя считать утверждёнными.
-10. `90_sources/source_inventory.md` — реестр исходных материалов и ограничения их использования.
-11. `90_sources/foundation_and_plinth_workbook_audit.md` — аудит параметров, формул и зависимостей исходного Excel по фундаменту и цоколю.
+7. `20_methodology/foundation_calculation_spec.md` — спецификация первого расчётного модуля фундамента.
+8. `20_methodology/plan_and_image_recognition.md` — будущая функция работы с планами и изображениями.
+9. `30_outputs/excel_output.md` — требования к Excel.
+10. `00_project/open_questions.md` — решения, которые ещё нельзя считать утверждёнными.
+11. `90_sources/source_inventory.md` — реестр исходных материалов и ограничения их использования.
+12. `90_sources/foundation_and_plinth_workbook_audit.md` — аудит параметров, формул и зависимостей исходного Excel по фундаменту и цоколю.
 
 ## Статусы знаний
 
