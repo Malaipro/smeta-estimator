@@ -13,6 +13,11 @@ node_modules/
 dist/
 build/
 coverage/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
 
 # Temporary analysis files
 tmp/
