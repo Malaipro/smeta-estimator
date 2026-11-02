@@ -18,6 +18,7 @@
 8. `30_outputs/excel_output.md` — требования к Excel.
 9. `00_project/open_questions.md` — решения, которые ещё нельзя считать утверждёнными.
 10. `90_sources/source_inventory.md` — реестр исходных материалов и ограничения их использования.
+11. `90_sources/foundation_and_plinth_workbook_audit.md` — аудит параметров, формул и зависимостей исходного Excel по фундаменту и цоколю.
 
 ## Статусы знаний
 
