@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Temporary analysis files
+tmp/
+*.log
+
+# Private source documents with personal or contractual data
+private_sources/
+knowledge_base/90_sources/originals_private/
+
+# IDE files
+.idea/
+.vscode/
