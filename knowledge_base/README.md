@@ -10,13 +10,14 @@
 
 1. `00_project/project_context.md` — назначение и стадия проекта.
 2. `00_project/confirmed_decisions.md` — только подтверждённые пользователем решения.
-3. `10_product/section_presets.md` — разделы и готовые комплектации.
-4. `10_product/input_parameters.md` — вводимые параметры.
-5. `20_methodology/preliminary_estimate_method.md` — расчётный подход.
-6. `20_methodology/plan_and_image_recognition.md` — будущая функция работы с планами и изображениями.
-7. `30_outputs/excel_output.md` — требования к Excel.
-8. `00_project/open_questions.md` — решения, которые ещё нельзя считать утверждёнными.
-9. `90_sources/source_inventory.md` — реестр исходных материалов и ограничения их использования.
+3. `00_project/iskra_manifest.md` — правила подключения к «Искре».
+4. `10_product/section_presets.md` — разделы и готовые комплектации.
+5. `10_product/input_parameters.md` — вводимые параметры.
+6. `20_methodology/preliminary_estimate_method.md` — расчётный подход.
+7. `20_methodology/plan_and_image_recognition.md` — будущая функция работы с планами и изображениями.
+8. `30_outputs/excel_output.md` — требования к Excel.
+9. `00_project/open_questions.md` — решения, которые ещё нельзя считать утверждёнными.
+10. `90_sources/source_inventory.md` — реестр исходных материалов и ограничения их использования.
 
 ## Статусы знаний
 
