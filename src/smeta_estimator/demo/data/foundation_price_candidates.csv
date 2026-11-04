@@ -1,0 +1,34 @@
+variant_id,item_code,name,grade,canonical_unit,source_unit,unit_price_rub,is_active,includes_delivery,status,source_file,source_sheet,source_cell,price_effective_date,comment
+algorithm-formwork,MAT-FORMWORK,Аренда и амортизация опалубки,,м.пог.,м.пог.,1500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U10,,Временная ставка из таблицы пользователя
+algorithm-ruberoid,MAT-RUBEROID,Рубероид 15 м²,,рул.,рул.,600,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U11,,Временная ставка из таблицы пользователя
+algorithm-nail-70,MAT-NAIL-70,Гвозди 70 мм,,кг,кг,130,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U12,,Временная ставка из таблицы пользователя
+algorithm-nail-90,MAT-NAIL-90,Гвозди 90 мм,,кг,кг,130,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U13,,Цена есть; исходная формула объёма сломана и не перенесена
+algorithm-sand,MAT-SAND,Песок строительный речной,,т,т,850,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U14,,Временная ставка из таблицы пользователя
+algorithm-bucket,MAT-BUCKET,Ведро металлическое 10 л,,шт,шт,450,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U15,,Временная ставка из таблицы пользователя
+algorithm-shovel,MAT-SHOVEL,Лопата совковая и штыковая,,шт,шт,500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U16,,Временная ставка из таблицы пользователя
+algorithm-screw-76,MAT-SCREW-76,"Саморезы 4,2 × 76 мм",,шт,шт,0.8,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U17,,Временная ставка из таблицы пользователя
+algorithm-screw-51,MAT-SCREW-51,"Саморезы 3,5 × 51 мм",,шт,шт,0.6,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U18,,Временная ставка из таблицы пользователя
+algorithm-wire,MAT-WIRE,"Проволока вязальная Ø1,2 мм",,кг,кг,120,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U20,,Объём в исходной таблице не заполнен
+algorithm-disc-125,MAT-DISC-125,Диск по металлу 125 мм,,шт,шт,40,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U21,,Объём в исходной таблице не заполнен
+algorithm-disc-230,MAT-DISC-230,Диск по металлу 230 мм,,шт,шт,150,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U22,,Объём в исходной таблице не заполнен
+algorithm-film,MAT-FILM,Плёнка полиэтиленовая,,рул.,рул.,2000,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U23,,Объём в исходной таблице не заполнен
+algorithm-rebar-12,MAT-REBAR-12,Арматура Ø12,A500,п.м.,п.м.,65,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U25,,Объём в исходной таблице не заполнен
+algorithm-rebar-6,MAT-REBAR-6,Арматура Ø6,A500,п.м.,п.м.,37,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U26,,Объём в исходной таблице не заполнен
+algorithm-concrete,MAT-CONCRETE,Бетон с доставкой,B20 (М250),м³,м³,6900,true,yes,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U27,,В описании исходной строки указана доставка
+algorithm-tamper,MCH-TAMPER,Аренда трамбовки,,сут.,сут.,2500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U31,,Объём в исходной таблице не заполнен
+algorithm-auger,MCH-AUGER,Аренда ямобура,,смена,шт,700,false,unknown,DEMO_UNIT_MISMATCH,алгоритмы(1).xlsx,блок1,U32,,Единица источника не совпадает с единицей каталога; цена не активна
+algorithm-excavator,MCH-EXCAVATOR,Экскаватор-погрузчик,,ч,ч,4000,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U33,,Объём в исходной таблице не заполнен
+algorithm-excavator-extra,MCH-EXCAVATOR-EXTRA,Дополнительное время экскаватора,,ч,ч,3500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U34,,Объём в исходной таблице не заполнен
+algorithm-pump,MCH-PUMP,Аренда бетононасоса,,ч,ч,5500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U35,,Объём в исходной таблице не заполнен
+algorithm-delivery,MCH-DELIVERY,Доставка материалов,,рейс,рейс,10000,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U36,,Объём в исходной таблице не заполнен
+algorithm-work,WRK-FOUNDATION,Устройство фундамента,,м³,м³,6500,true,unknown,DEMO_UNVERIFIED,алгоритмы(1).xlsx,блок1,U41,,Объём в исходной таблице не заполнен
+rebar-a3-12,MAT-REBAR-12,Арматура Ø12,A-III,п.м.,п.м.,44,false,unknown,DEMO_ALTERNATIVE,арматура.xlsx,Лист1,E6,,Альтернатива; класс не приравнен автоматически к A500
+rebar-a3-6,MAT-REBAR-6,Арматура Ø6,A-III,п.м.,п.м.,14,false,unknown,DEMO_ALTERNATIVE,арматура.xlsx,Лист1,E9,,Альтернатива; класс не приравнен автоматически к A500
+rebar-a1-6,MAT-REBAR-6,Арматура Ø6,A-I,п.м.,п.м.,20,false,unknown,DEMO_ALTERNATIVE,арматура.xlsx,Лист1,E11,,Альтернатива; класс не приравнен автоматически к A500
+concrete-b20,MAT-CONCRETE,Бетон,B20 (М250),м³,м³,4350,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E2,,Доставка и НДС в источнике не указаны
+concrete-b15,MAT-CONCRETE,Бетон,B15 (М200),м³,м³,3850,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E3,,Доставка и НДС в источнике не указаны
+concrete-b7-5,MAT-CONCRETE,Бетон,B7.5 (М100),м³,м³,2700,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E4,,Доставка и НДС в источнике не указаны
+concrete-b10,MAT-CONCRETE,Бетон,B10 (М150),м³,м³,2800,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E5,,Доставка и НДС в источнике не указаны
+concrete-b12-5,MAT-CONCRETE,Бетон,B12.5 (М150),м³,м³,2850,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E6,,Доставка и НДС в источнике не указаны
+concrete-b22-5,MAT-CONCRETE,Бетон,B22.5 (М300),м³,м³,3250,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E7,,Доставка и НДС в источнике не указаны; порядок цен требует проверки
+concrete-b25,MAT-CONCRETE,Бетон,B25 (М350),м³,м³,3350,false,unknown,DEMO_ALTERNATIVE,Бетон.xlsx,Лист1,E8,,Доставка и НДС в источнике не указаны; порядок цен требует проверки

@@ -5,11 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from smeta_estimator.demo import (
+    DemoEstimateSummary,
+    DemoPriceCandidate,
+    build_demo_foundation_estimate,
+    load_demo_price_candidates,
+)
 from smeta_estimator.foundation import (
+    EstimateLine,
     FoundationInput,
     FoundationResult,
-    EstimateLine,
-    build_foundation_estimate,
     calculate_foundation,
 )
 
@@ -57,6 +62,15 @@ class EditField:
     kind: str = "positive"
 
 
+@dataclass(frozen=True, slots=True)
+class DraftCalculation:
+    data: FoundationInput
+    result: FoundationResult
+    lines: tuple[EstimateLine, ...]
+    price_candidates: tuple[DemoPriceCandidate, ...]
+    demo_summary: DemoEstimateSummary
+
+
 EDIT_FIELDS: tuple[EditField, ...] = (
     EditField("outer_grillage_width_m", "Ширина наружного ростверка", "м"),
     EditField("outer_grillage_height_m", "Высота наружного ростверка", "м"),
@@ -91,11 +105,18 @@ def parse_percent(text: str) -> Decimal:
 
 def calculate_draft(
     draft: FoundationDraft,
-) -> tuple[FoundationInput, FoundationResult, tuple[EstimateLine, ...]]:
+) -> DraftCalculation:
     data = draft.to_input()
     result = calculate_foundation(data)
-    lines = build_foundation_estimate(result)
-    return data, result, lines
+    candidates = load_demo_price_candidates()
+    lines, summary = build_demo_foundation_estimate(data, result, candidates)
+    return DraftCalculation(
+        data=data,
+        result=result,
+        lines=lines,
+        price_candidates=candidates,
+        demo_summary=summary,
+    )
 
 
 def draft_summary(draft: FoundationDraft) -> str:

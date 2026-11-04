@@ -18,10 +18,11 @@ class TelegramServiceTests(unittest.TestCase):
             outer_wall_length_m=Decimal("40"),
             inner_wall_length_m=Decimal("21.5"),
         )
-        _, result, lines = calculate_draft(draft)
-        self.assertEqual(result.pile_count_effective, 41)
-        self.assertEqual(result.concrete_calculated_m3, Decimal("26.5"))
-        self.assertEqual(len(lines), 28)
+        calculation = calculate_draft(draft)
+        self.assertEqual(calculation.result.pile_count_effective, 41)
+        self.assertEqual(calculation.result.concrete_calculated_m3, Decimal("26.5"))
+        self.assertEqual(len(calculation.lines), 28)
+        self.assertEqual(calculation.demo_summary.known_subtotal, Decimal("295100.0"))
 
     def test_decimal_parser_accepts_comma(self) -> None:
         self.assertEqual(parse_decimal("21,5"), Decimal("21.5"))

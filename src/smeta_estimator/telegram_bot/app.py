@@ -59,7 +59,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
         "Демо рассчитывает предварительные объёмы свайно-ростверкового фундамента "
         "и формирует Excel. Начать расчёт: /new\n\n"
-        "Стоимость пока не подставляется: база цен ещё не подключена."
+        "В расчёт включены тестовые цены из ваших таблиц. Их актуальность и "
+        "соответствие региону пока не подтверждены; полный итог не показывается, "
+        "если для позиции не хватает объёма или цены."
     )
 
 
@@ -188,12 +190,14 @@ async def receive_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def _send_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     draft: FoundationDraft = context.user_data["draft"]
     try:
-        data, result, lines = calculate_draft(draft)
+        calculation = calculate_draft(draft)
         content = build_foundation_workbook(
             object_name=draft.object_name,
-            data=data,
-            result=result,
-            lines=lines,
+            data=calculation.data,
+            result=calculation.result,
+            lines=calculation.lines,
+            demo_summary=calculation.demo_summary,
+            price_candidates=calculation.price_candidates,
         )
     except FoundationValidationError as exc:
         details = "\n".join(f"• {issue.field}: {issue.message}" for issue in exc.issues)
@@ -211,14 +215,20 @@ async def _send_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return ConversationHandler.END
 
     await update.effective_message.reply_text(
-        f"Готово. Свай: {result.pile_count_effective} шт. Бетон к заказу: "
-        f"{result.concrete_calculated_m3} м³. Стоимость появится после подключения базы цен."
+        f"Готово. Свай: {calculation.result.pile_count_effective} шт. "
+        f"Бетон к заказу: {calculation.result.concrete_calculated_m3} м³.\n"
+        f"Стоимость рассчитанных позиций: "
+        f"{format(calculation.demo_summary.known_subtotal, ',.0f').replace(',', ' ')} ₽. "
+        "Полный итог пока недоступен: для части строк нет объёма или цены."
     )
     stream = BytesIO(content)
     filename = foundation_workbook_filename(draft.object_name)
     await update.effective_message.reply_document(
         document=InputFile(stream, filename=filename),
-        caption="Предварительная смета фундамента",
+        caption=(
+            "Предварительная смета фундамента. Цены тестовые, "
+            "актуальность и регион не подтверждены."
+        ),
         reply_markup=ReplyKeyboardRemove(),
     )
     context.user_data.clear()

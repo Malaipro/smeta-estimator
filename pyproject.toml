@@ -15,3 +15,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"smeta_estimator.demo.data" = ["*.csv"]

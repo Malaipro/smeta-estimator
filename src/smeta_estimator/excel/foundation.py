@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from smeta_estimator.demo import DemoEstimateSummary, DemoPriceCandidate
 from smeta_estimator.foundation import (
     EstimateCategory,
     EstimateLine,
@@ -103,6 +104,7 @@ def _add_summary_sheet(
     created_at: datetime,
     data: FoundationInput,
     result: FoundationResult,
+    demo_summary: DemoEstimateSummary,
 ) -> None:
     ws = workbook.active
     ws.title = "Сводка"
@@ -114,11 +116,23 @@ def _add_summary_sheet(
     ws["A4"] = "Объект"
     ws["B4"] = object_name
     ws["A5"] = "Дата расчёта"
-    ws["B5"] = created_at
-    ws["B5"].number_format = "dd.mm.yyyy"
+    ws["B5"] = created_at.strftime("%d.%m.%Y")
     ws["A6"] = "Статус стоимости"
-    ws["B6"] = "Не рассчитана: база цен и ручные количества ещё не заполнены"
+    ws["B6"] = "Частичный демо-итог; полная стоимость недоступна"
+    ws.merge_cells("B6:F6")
+    ws["B6"].alignment = Alignment(wrap_text=True, vertical="center")
     ws["B6"].fill = PatternFill("solid", fgColor=AMBER)
+    ws.row_dimensions[6].height = 30
+    ws["A7"] = "Стоимость рассчитанных позиций"
+    ws["B7"] = "='Смета'!C36"
+    ws["B7"].number_format = '#,##0.00 "₽"'
+    ws["D7"] = (
+        f"Рассчитано {len(demo_summary.calculated_line_codes)} из 28 строк; "
+        f"без объёма: {len(demo_summary.missing_quantity_codes)}, "
+        f"без активной цены: {len(demo_summary.missing_price_codes)}"
+    )
+    ws.merge_cells("D7:F7")
+    ws["D7"].alignment = Alignment(wrap_text=True, vertical="top")
 
     ws["A8"] = "Основные результаты"
     ws["A8"].font = Font(name=FONT_NAME, size=11, bold=True, color=TEXT)
@@ -145,7 +159,11 @@ def _add_summary_sheet(
     ws["A15"] = "Ограничения расчёта"
     ws["A15"].font = Font(name=FONT_NAME, size=11, bold=True, color=TEXT)
     row = 16
-    for warning in result.warnings:
+    price_warning = (
+        "Цены взяты из тестовых таблиц: дата актуальности, регион, "
+        "НДС и доставка не подтверждены, кроме явной пометки о доставке бетона."
+    )
+    for warning in (price_warning, *result.warnings):
         ws.cell(row=row, column=1, value=warning)
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
         ws.cell(row=row, column=1).fill = PatternFill("solid", fgColor=LIGHT_RED)
@@ -214,14 +232,22 @@ def _add_inputs_sheet(workbook: Workbook, data: FoundationInput) -> None:
     _style_body(ws)
 
 
-def _add_estimate_sheet(workbook: Workbook, lines: tuple[EstimateLine, ...]) -> None:
+def _add_estimate_sheet(
+    workbook: Workbook,
+    lines: tuple[EstimateLine, ...],
+    price_candidates: tuple[DemoPriceCandidate, ...],
+    demo_summary: DemoEstimateSummary,
+) -> None:
     ws = workbook.create_sheet("Смета")
     ws.sheet_properties.tabColor = "70AD47"
     ws.sheet_view.showGridLines = False
-    _style_title(ws, "A2:L2")
+    _style_title(ws, "A2:N2")
     ws["A2"] = "Предварительная ведомость объёмов и стоимости"
-    ws["A3"] = "Жёлтые ячейки заполняет сметчик. Итоги не показываются, пока обязательные значения отсутствуют."
-    ws.merge_cells("A3:L3")
+    ws["A3"] = (
+        "Жёлтые ячейки можно корректировать. Показан только частичный демо-итог; "
+        "пустые значения не заменяются нулями."
+    )
+    ws.merge_cells("A3:N3")
     ws["A3"].font = Font(name=FONT_NAME, size=9, italic=True, color=TEXT)
 
     headers = [
@@ -237,13 +263,21 @@ def _add_estimate_sheet(workbook: Workbook, lines: tuple[EstimateLine, ...]) -> 
         "Стоимость",
         "Включено",
         "Комментарий",
+        "Статус цены",
+        "Источник цены",
     ]
     for column, value in enumerate(headers, start=1):
         ws.cell(row=5, column=column, value=value)
     _style_header(ws[5])
 
+    active_candidates = {
+        candidate.item_code: candidate
+        for candidate in price_candidates
+        if candidate.is_active
+    }
     first_data_row = 6
     for row_index, line in enumerate(lines, start=first_data_row):
+        candidate = active_candidates.get(line.item_code)
         values = [
             CATEGORY_LABELS[line.category],
             line.item_code,
@@ -257,6 +291,8 @@ def _add_estimate_sheet(workbook: Workbook, lines: tuple[EstimateLine, ...]) -> 
             None,
             "Да" if line.included else "Нет",
             line.comment,
+            candidate.status.value if candidate else "Цена не заполнена",
+            candidate.source_reference if candidate else None,
         ]
         for column, value in enumerate(values, start=1):
             ws.cell(row=row_index, column=column, value=value)
@@ -285,13 +321,22 @@ def _add_estimate_sheet(workbook: Workbook, lines: tuple[EstimateLine, ...]) -> 
     status_row = last_data_row + 2
     ws.cell(row=status_row, column=1, value="Статус итоговой стоимости")
     ws.cell(row=status_row, column=1).font = Font(name=FONT_NAME, bold=True, color=TEXT)
-    ws.cell(
-        row=status_row,
-        column=3,
-        value="Недоступна, пока не заполнены количества и цены включённых позиций",
-    )
-    ws.merge_cells(start_row=status_row, start_column=3, end_row=status_row, end_column=10)
+    ws.cell(row=status_row, column=3, value="Полный итог недоступен")
+    ws.merge_cells(start_row=status_row, start_column=3, end_row=status_row, end_column=6)
     ws.cell(row=status_row, column=3).fill = PatternFill("solid", fgColor=AMBER)
+    ws.cell(row=status_row + 1, column=1, value="Частичный демо-итог")
+    ws.cell(
+        row=status_row + 1,
+        column=3,
+        value=f"=SUM(J{first_data_row}:J{last_data_row})",
+    )
+    ws.cell(row=status_row + 1, column=3).number_format = '#,##0.00 "₽"'
+    ws.cell(row=status_row + 2, column=1, value="Рассчитано строк")
+    ws.cell(
+        row=status_row + 2,
+        column=3,
+        value=f"{len(demo_summary.calculated_line_codes)} из {len(lines)}",
+    )
 
     ws.freeze_panes = "A6"
     ws.auto_filter.ref = f"A5:L{last_data_row}"
@@ -310,11 +355,107 @@ def _add_estimate_sheet(workbook: Workbook, lines: tuple[EstimateLine, ...]) -> 
             "J": 17,
             "K": 11,
             "L": 30,
+            "M": 22,
+            "N": 42,
         },
     )
     for row in range(6, last_data_row + 1):
-        ws.row_dimensions[row].height = 28
+        ws.row_dimensions[row].height = 34
         ws.cell(row=row, column=3).alignment = Alignment(wrap_text=True, vertical="center")
+        ws.cell(row=row, column=12).alignment = Alignment(wrap_text=True, vertical="center")
+        ws.cell(row=row, column=14).alignment = Alignment(wrap_text=True, vertical="center")
+    _style_body(ws)
+
+
+def _add_price_sources_sheet(
+    workbook: Workbook,
+    candidates: tuple[DemoPriceCandidate, ...],
+) -> None:
+    ws = workbook.create_sheet("Источники цен")
+    ws.sheet_properties.tabColor = "A5A5A5"
+    ws.sheet_view.showGridLines = False
+    _style_title(ws, "A2:O2")
+    ws["A2"] = "Тестовый каталог цен и происхождение значений"
+    ws["A3"] = (
+        "Дата актуальности цен не указана. Активные ставки нужны только для проверки схемы. "
+        "Альтернативы в расчёт не входят."
+    )
+    ws.merge_cells("A3:O3")
+    ws["A3"].alignment = Alignment(wrap_text=True, vertical="top")
+    headers = [
+        "Вариант",
+        "Код",
+        "Наименование",
+        "Класс/марка",
+        "Ед. каталога",
+        "Ед. источника",
+        "Цена, ₽",
+        "Активна",
+        "Доставка",
+        "Статус",
+        "Файл",
+        "Лист",
+        "Ячейка",
+        "Дата цены",
+        "Комментарий",
+    ]
+    for column, value in enumerate(headers, start=1):
+        ws.cell(row=5, column=column, value=value)
+    _style_header(ws[5])
+    delivery_labels = {True: "Да", False: "Нет", None: "Неизвестно"}
+    for row_index, candidate in enumerate(candidates, start=6):
+        values = [
+            candidate.variant_id,
+            candidate.item_code,
+            candidate.name,
+            candidate.grade,
+            candidate.canonical_unit,
+            candidate.source_unit,
+            _number(candidate.unit_price_rub),
+            "Да" if candidate.is_active else "Нет",
+            delivery_labels[candidate.includes_delivery],
+            candidate.status.value,
+            candidate.source_file,
+            candidate.source_sheet,
+            candidate.source_cell,
+            candidate.price_effective_date,
+            candidate.comment,
+        ]
+        for column, value in enumerate(values, start=1):
+            ws.cell(row=row_index, column=column, value=value)
+        ws.cell(row=row_index, column=7).number_format = '#,##0.00 "₽"'
+        if candidate.is_active:
+            ws.cell(row=row_index, column=8).fill = PatternFill("solid", fgColor=BLUE)
+        else:
+            ws.cell(row=row_index, column=8).fill = PatternFill("solid", fgColor=AMBER)
+        ws.row_dimensions[row_index].height = 34
+        ws.cell(row=row_index, column=3).alignment = Alignment(
+            wrap_text=True, vertical="center"
+        )
+        ws.cell(row=row_index, column=15).alignment = Alignment(wrap_text=True)
+    last_row = 5 + len(candidates)
+    ws.freeze_panes = "A6"
+    ws.auto_filter.ref = f"A5:O{last_row}"
+    _set_widths(
+        ws,
+        {
+            "A": 24,
+            "B": 22,
+            "C": 36,
+            "D": 16,
+            "E": 15,
+            "F": 15,
+            "G": 14,
+            "H": 11,
+            "I": 14,
+            "J": 22,
+            "K": 22,
+            "L": 12,
+            "M": 10,
+            "N": 15,
+            "O": 46,
+        },
+    )
     _style_body(ws)
 
 
@@ -324,15 +465,20 @@ def build_foundation_workbook(
     data: FoundationInput,
     result: FoundationResult,
     lines: tuple[EstimateLine, ...],
+    demo_summary: DemoEstimateSummary,
+    price_candidates: tuple[DemoPriceCandidate, ...],
     created_at: datetime | None = None,
 ) -> bytes:
-    """Build a three-sheet XLSX in memory for Telegram delivery."""
+    """Build a four-sheet XLSX in memory for Telegram delivery."""
 
     timestamp = created_at or datetime.now()
     workbook = Workbook()
-    _add_summary_sheet(workbook, object_name, timestamp, data, result)
+    _add_summary_sheet(
+        workbook, object_name, timestamp, data, result, demo_summary
+    )
     _add_inputs_sheet(workbook, data)
-    _add_estimate_sheet(workbook, lines)
+    _add_estimate_sheet(workbook, lines, price_candidates, demo_summary)
+    _add_price_sources_sheet(workbook, price_candidates)
 
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
