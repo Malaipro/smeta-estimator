@@ -234,12 +234,8 @@ async def ai_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ConversationHandler.END
     await update.effective_message.reply_text(
-        "Перед загрузкой:\n\n"
-        "• изображение будет передано внешнему AI-сервису Taynik;\n"
-        "• удалите ФИО, адреса, телефоны и другие данные клиента;\n"
-        f"• поддерживаются JPG и PNG до {_config(context).ai_max_file_bytes // 1_000_000} МБ;\n"
-        "• результат предварительный и требует проверки сметчиком;\n"
-        "• ИИ не выбирает фундамент и не рассчитывает стоимость.",
+        f"• поддерживаются JPG и PNG до {_config(context).ai_max_file_bytes // 1_000_000} МБ;\n\n"
+        "• результат предварительный и требует проверки сметчиком;",
         reply_markup=AI_CONSENT_KEYBOARD,
     )
     return AI_CONSENT
