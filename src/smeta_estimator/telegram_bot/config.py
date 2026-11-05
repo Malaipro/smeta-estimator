@@ -23,14 +23,10 @@ class BotConfig:
             raise BotConfigError("TELEGRAM_BOT_TOKEN is required")
 
         raw_ids = values.get("ALLOWED_TELEGRAM_IDS", "").strip()
-        if not raw_ids:
-            raise BotConfigError("ALLOWED_TELEGRAM_IDS is required")
         try:
             allowed = frozenset(int(item.strip()) for item in raw_ids.split(",") if item.strip())
         except ValueError as exc:
             raise BotConfigError("ALLOWED_TELEGRAM_IDS must contain integers separated by commas") from exc
-        if not allowed:
-            raise BotConfigError("ALLOWED_TELEGRAM_IDS must contain at least one Telegram ID")
 
         try:
             delay = float(values.get("BOT_STARTUP_DELAY_SECONDS", "5"))

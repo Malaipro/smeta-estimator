@@ -30,9 +30,18 @@ class TelegramServiceTests(unittest.TestCase):
     def test_percent_parser_converts_to_ratio(self) -> None:
         self.assertEqual(parse_percent("5"), Decimal("0.05"))
 
-    def test_config_is_closed_by_default(self) -> None:
+    def test_config_is_public_by_default(self) -> None:
+        config = BotConfig.from_env({"TELEGRAM_BOT_TOKEN": "token"})
+        self.assertEqual(config.allowed_user_ids, frozenset())
+
+    def test_config_rejects_invalid_allowed_ids(self) -> None:
         with self.assertRaises(BotConfigError):
-            BotConfig.from_env({"TELEGRAM_BOT_TOKEN": "token"})
+            BotConfig.from_env(
+                {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "ALLOWED_TELEGRAM_IDS": "123,not-an-id",
+                }
+            )
 
     def test_config_parses_allowed_ids(self) -> None:
         config = BotConfig.from_env(

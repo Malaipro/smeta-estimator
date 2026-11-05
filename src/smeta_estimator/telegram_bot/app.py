@@ -41,7 +41,13 @@ CONFIRM_KEYBOARD = ReplyKeyboardMarkup(
 
 
 def _is_allowed(update: Update, config: BotConfig) -> bool:
-    return bool(update.effective_user and update.effective_user.id in config.allowed_user_ids)
+    return bool(
+        update.effective_user
+        and (
+            not config.allowed_user_ids
+            or update.effective_user.id in config.allowed_user_ids
+        )
+    )
 
 
 async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -280,5 +286,8 @@ def run() -> None:
         LOGGER.info("Waiting %.1f seconds before Telegram polling", config.startup_delay_seconds)
         time.sleep(config.startup_delay_seconds)
     application = build_application(config)
-    LOGGER.info("Starting Telegram polling for %d allowed user(s)", len(config.allowed_user_ids))
+    if config.allowed_user_ids:
+        LOGGER.info("Starting Telegram polling for %d allowed user(s)", len(config.allowed_user_ids))
+    else:
+        LOGGER.info("Starting Telegram polling in public access mode")
     application.run_polling(drop_pending_updates=True)

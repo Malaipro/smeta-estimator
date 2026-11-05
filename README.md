@@ -49,14 +49,16 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 ## Telegram-демо
 
-Бот поддерживает команды `/start`, `/new`, `/cancel` и `/help`. Доступ закрыт
-списком Telegram ID. История расчётов и исходные сообщения не сохраняются.
+Бот поддерживает команды `/start`, `/new`, `/cancel` и `/help`. По умолчанию
+бот открыт всем пользователям. Если указать `ALLOWED_TELEGRAM_IDS`, доступ
+будет ограничен перечисленными Telegram ID. История расчётов и исходные
+сообщения не сохраняются.
 
 Переменные окружения:
 
 ```text
 TELEGRAM_BOT_TOKEN=<токен BotFather>
-ALLOWED_TELEGRAM_IDS=<один или несколько Telegram ID через запятую>
+ALLOWED_TELEGRAM_IDS=<необязательно: один или несколько Telegram ID через запятую>
 BOT_STARTUP_DELAY_SECONDS=5
 PYTHONUNBUFFERED=1
 ```
@@ -66,8 +68,11 @@ PYTHONUNBUFFERED=1
 
 ```bash
 python3 -m pip install -r requirements.txt
-TELEGRAM_BOT_TOKEN=... ALLOWED_TELEGRAM_IDS=... python3 run_bot.py
+TELEGRAM_BOT_TOKEN=... python3 run_bot.py
 ```
+
+Для закрытого режима дополнительно задайте
+`ALLOWED_TELEGRAM_IDS=123456789,987654321`.
 
 Для Amvera в репозитории подготовлен `amvera.yml`. Секреты нужно добавлять в
 настройках проекта Amvera, а не в файлы репозитория.
