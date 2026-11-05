@@ -18,6 +18,7 @@ from smeta_estimator.foundation import (
     EstimateCategory,
     EstimateLine,
     FoundationInput,
+    FoundationProjectInfo,
     FoundationResult,
 )
 
@@ -189,7 +190,11 @@ def _add_summary_sheet(
     _style_body(ws)
 
 
-def _add_inputs_sheet(workbook: Workbook, data: FoundationInput) -> None:
+def _add_inputs_sheet(
+    workbook: Workbook,
+    data: FoundationInput,
+    project_info: FoundationProjectInfo | None,
+) -> None:
     ws = workbook.create_sheet("Исходные данные")
     ws.sheet_properties.tabColor = "5B9BD5"
     ws.sheet_view.showGridLines = False
@@ -201,18 +206,33 @@ def _add_inputs_sheet(workbook: Workbook, data: FoundationInput) -> None:
         ws.cell(row=4, column=column, value=value)
     _style_header(ws[4])
 
+    info = project_info or FoundationProjectInfo()
+    technical_source = info.parameters_source
+    technical_status = (
+        "Подтверждено сметчиком"
+        if technical_source == "Ручной ввод"
+        else "Требует проверки"
+    )
     rows = [
+        ("Форма дома", info.shape, "—", "Выбор сметчика", "Не влияет на формулу напрямую"),
+        ("Длина дома", info.house_length_m, "м", "Ручной ввод", "Используется для расчёта периметра"),
+        ("Ширина дома", info.house_width_m, "м", "Ручной ввод", "Используется для расчёта периметра"),
+        ("Площадь дома", info.area_m2, "м²", "Расчёт/ручной ввод", "Пока не влияет на формулу"),
+        ("Этажность", info.storeys, "эт.", "Выбор сметчика", "Пока не влияет на формулу"),
+        ("Материал стен", info.wall_material, "—", "Выбор сметчика", "Пока не влияет на формулу"),
+        ("Условие по грунту", info.soil_condition, "—", "Выбор сметчика", "Пока не влияет на формулу"),
         ("Периметр наружных несущих стен", data.outer_wall_length_m, "м", "Ручной ввод", "Подтверждено сметчиком"),
         ("Длина внутренних несущих стен", data.inner_wall_length_m, "м", "Ручной ввод", "Подтверждено сметчиком"),
-        ("Ширина наружного ростверка", data.outer_grillage_width_m, "м", "Тестовое значение", "Требует проверки"),
-        ("Высота наружного ростверка", data.outer_grillage_height_m, "м", "Тестовое значение", "Требует проверки"),
-        ("Ширина внутреннего ростверка", data.inner_grillage_width_m, "м", "Тестовое значение", "Требует проверки"),
-        ("Высота внутреннего ростверка", data.inner_grillage_height_m, "м", "Тестовое значение", "Требует проверки"),
-        ("Шаг свай", data.pile_spacing_m, "м", "Тестовое значение", "Требует проекта"),
-        ("Диаметр свай", data.pile_diameter_m, "м", "Тестовое значение", "Открытый вопрос"),
-        ("Длина свай", data.pile_length_m, "м", "Тестовое значение", "Открытый вопрос"),
-        ("Запас бетона ростверка", data.grillage_waste_ratio, "доля", "Тестовое значение", "Требует проверки"),
-        ("Запас бетона свай", data.pile_waste_ratio, "доля", "Тестовое значение", "Требует проверки"),
+        ("Источник технических параметров", technical_source, "—", technical_source, technical_status),
+        ("Ширина наружного ростверка", data.outer_grillage_width_m, "м", technical_source, technical_status),
+        ("Высота наружного ростверка", data.outer_grillage_height_m, "м", technical_source, technical_status),
+        ("Ширина внутреннего ростверка", data.inner_grillage_width_m, "м", technical_source, technical_status),
+        ("Высота внутреннего ростверка", data.inner_grillage_height_m, "м", technical_source, technical_status),
+        ("Шаг свай", data.pile_spacing_m, "м", technical_source, technical_status),
+        ("Диаметр свай", data.pile_diameter_m, "м", technical_source, technical_status),
+        ("Длина свай", data.pile_length_m, "м", technical_source, technical_status),
+        ("Запас бетона ростверка", data.grillage_waste_ratio, "доля", technical_source, technical_status),
+        ("Запас бетона свай", data.pile_waste_ratio, "доля", technical_source, technical_status),
         ("Шаг округления бетона вверх", data.concrete_rounding_step_m3, "м³", "Формула источника", "Предварительно"),
         ("Класс бетона ростверка", data.grillage_concrete_grade, "—", "Тестовое значение", "Требует проекта"),
         ("Класс бетона свай", data.pile_concrete_grade, "—", "Тестовое значение", "Требует проекта"),
@@ -223,12 +243,19 @@ def _add_inputs_sheet(workbook: Workbook, data: FoundationInput) -> None:
                 value = float(value)
             ws.cell(row=row_index, column=column, value=value)
         ws.cell(row=row_index, column=2).number_format = "0.000"
-        if row_values[3] == "Тестовое значение":
+        if row_values[3] == "Демонстрационные значения":
             ws.cell(row=row_index, column=2).fill = PatternFill("solid", fgColor=AMBER)
 
     ws.freeze_panes = "A5"
     ws.auto_filter.ref = f"A4:E{4 + len(rows)}"
-    _set_widths(ws, {"A": 39, "B": 16, "C": 10, "D": 22, "E": 24})
+    _set_widths(ws, {"A": 42, "B": 25, "C": 10, "D": 31, "E": 36})
+    for row_index in range(5, 5 + len(rows)):
+        ws.row_dimensions[row_index].height = 32
+        for column in (2, 4, 5):
+            ws.cell(row=row_index, column=column).alignment = Alignment(
+                wrap_text=True,
+                vertical="center",
+            )
     _style_body(ws)
 
 
@@ -467,6 +494,7 @@ def build_foundation_workbook(
     lines: tuple[EstimateLine, ...],
     demo_summary: DemoEstimateSummary,
     price_candidates: tuple[DemoPriceCandidate, ...],
+    project_info: FoundationProjectInfo | None = None,
     created_at: datetime | None = None,
 ) -> bytes:
     """Build a four-sheet XLSX in memory for Telegram delivery."""
@@ -476,7 +504,7 @@ def build_foundation_workbook(
     _add_summary_sheet(
         workbook, object_name, timestamp, data, result, demo_summary
     )
-    _add_inputs_sheet(workbook, data)
+    _add_inputs_sheet(workbook, data, project_info)
     _add_estimate_sheet(workbook, lines, price_candidates, demo_summary)
     _add_price_sources_sheet(workbook, price_candidates)
 

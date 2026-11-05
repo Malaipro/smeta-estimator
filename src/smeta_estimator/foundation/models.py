@@ -40,6 +40,20 @@ class QuantitySource(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class FoundationProjectInfo:
+    """Object details collected by the interface but not used as engineering inputs."""
+
+    shape: str = "Не указана"
+    house_length_m: Decimal | None = None
+    house_width_m: Decimal | None = None
+    area_m2: Decimal | None = None
+    storeys: int | None = None
+    wall_material: str | None = None
+    soil_condition: str | None = None
+    parameters_source: str = "Демонстрационные значения"
+
+
+@dataclass(frozen=True, slots=True)
 class RebarConfig:
     longitudinal_grade: str = "A500"
     longitudinal_diameter_mm: DecimalLike = Decimal("12")

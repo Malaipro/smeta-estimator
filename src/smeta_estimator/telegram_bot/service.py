@@ -14,6 +14,7 @@ from smeta_estimator.demo import (
 from smeta_estimator.foundation import (
     EstimateLine,
     FoundationInput,
+    FoundationProjectInfo,
     FoundationResult,
     calculate_foundation,
 )
@@ -22,6 +23,14 @@ from smeta_estimator.foundation import (
 @dataclass(slots=True)
 class FoundationDraft:
     object_name: str = ""
+    shape: str = ""
+    house_length_m: Decimal | None = None
+    house_width_m: Decimal | None = None
+    area_m2: Decimal | None = None
+    storeys: int | None = None
+    wall_material: str = ""
+    soil_condition: str = ""
+    parameters_source: str = "Демонстрационные значения"
     outer_wall_length_m: Decimal | None = None
     inner_wall_length_m: Decimal | None = None
     outer_grillage_width_m: Decimal = Decimal("0.5")
@@ -34,6 +43,25 @@ class FoundationDraft:
     grillage_waste_ratio: Decimal = Decimal("0.05")
     pile_waste_ratio: Decimal = Decimal("0.05")
     concrete_rounding_step_m3: Decimal = Decimal("0.5")
+
+    def set_rectangular_geometry(self, length_m: Decimal, width_m: Decimal) -> None:
+        self.shape = "Прямоугольный дом"
+        self.house_length_m = length_m
+        self.house_width_m = width_m
+        self.area_m2 = length_m * width_m
+        self.outer_wall_length_m = Decimal("2") * (length_m + width_m)
+
+    def to_project_info(self) -> FoundationProjectInfo:
+        return FoundationProjectInfo(
+            shape=self.shape or "Не указана",
+            house_length_m=self.house_length_m,
+            house_width_m=self.house_width_m,
+            area_m2=self.area_m2,
+            storeys=self.storeys,
+            wall_material=self.wall_material or None,
+            soil_condition=self.soil_condition or None,
+            parameters_source=self.parameters_source,
+        )
 
     def to_input(self) -> FoundationInput:
         if self.outer_wall_length_m is None or self.inner_wall_length_m is None:
@@ -120,14 +148,24 @@ def calculate_draft(
 
 
 def draft_summary(draft: FoundationDraft) -> str:
+    dimensions = "—"
+    if draft.house_length_m is not None and draft.house_width_m is not None:
+        dimensions = f"{draft.house_length_m} × {draft.house_width_m} м"
     return (
         f"Объект: {draft.object_name}\n"
-        f"Наружные стены: {draft.outer_wall_length_m} м\n"
+        f"Форма: {draft.shape or '—'}\n"
+        f"Размеры: {dimensions}\n"
+        f"Площадь: {draft.area_m2 if draft.area_m2 is not None else '—'} м²\n"
+        f"Наружный периметр: {draft.outer_wall_length_m} м\n"
         f"Внутренние несущие стены: {draft.inner_wall_length_m} м\n\n"
-        "Тестовые параметры:\n"
+        f"Этажность: {draft.storeys or '—'}\n"
+        f"Стены: {draft.wall_material or '—'}\n"
+        f"Грунт: {draft.soil_condition or '—'}\n\n"
+        f"Параметры фундамента ({draft.parameters_source.lower()}):\n"
         f"• наружный ростверк: {draft.outer_grillage_width_m} × {draft.outer_grillage_height_m} м\n"
         f"• внутренний ростверк: {draft.inner_grillage_width_m} × {draft.inner_grillage_height_m} м\n"
         f"• сваи: шаг {draft.pile_spacing_m} м, диаметр {draft.pile_diameter_m} м, длина {draft.pile_length_m} м\n"
         f"• запас бетона: ростверк {draft.grillage_waste_ratio * 100}%, сваи {draft.pile_waste_ratio * 100}%\n\n"
+        "Площадь, этажность, материал стен и грунт пока не меняют формулу.\n"
         "Параметры предварительные и не заменяют проект конструктора."
     )

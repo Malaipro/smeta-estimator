@@ -24,6 +24,27 @@ class TelegramServiceTests(unittest.TestCase):
         self.assertEqual(len(calculation.lines), 28)
         self.assertEqual(calculation.demo_summary.known_subtotal, Decimal("295100.0"))
 
+    def test_rectangular_geometry_calculates_area_and_perimeter(self) -> None:
+        draft = FoundationDraft()
+        draft.set_rectangular_geometry(Decimal("10"), Decimal("12"))
+        self.assertEqual(draft.area_m2, Decimal("120"))
+        self.assertEqual(draft.outer_wall_length_m, Decimal("44"))
+        self.assertEqual(draft.shape, "Прямоугольный дом")
+
+    def test_project_info_keeps_non_engineering_answers(self) -> None:
+        draft = FoundationDraft(
+            shape="Сложная форма",
+            area_m2=Decimal("135.5"),
+            storeys=2,
+            wall_material="Porotherm",
+            soil_condition="Неизвестен",
+        )
+        info = draft.to_project_info()
+        self.assertEqual(info.area_m2, Decimal("135.5"))
+        self.assertEqual(info.storeys, 2)
+        self.assertEqual(info.wall_material, "Porotherm")
+        self.assertEqual(info.soil_condition, "Неизвестен")
+
     def test_decimal_parser_accepts_comma(self) -> None:
         self.assertEqual(parse_decimal("21,5"), Decimal("21.5"))
 

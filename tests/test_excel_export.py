@@ -13,6 +13,13 @@ class ExcelExportTests(unittest.TestCase):
     def setUp(self) -> None:
         self.draft = FoundationDraft(
             object_name="Тестовый дом",
+            shape="Прямоугольный дом",
+            house_length_m=Decimal("10"),
+            house_width_m=Decimal("10"),
+            area_m2=Decimal("100"),
+            storeys=2,
+            wall_material="Porotherm",
+            soil_condition="Неизвестен",
             outer_wall_length_m=Decimal("40"),
             inner_wall_length_m=Decimal("21.5"),
         )
@@ -21,6 +28,7 @@ class ExcelExportTests(unittest.TestCase):
     def _workbook(self):
         content = build_foundation_workbook(
             object_name=self.draft.object_name,
+            project_info=self.draft.to_project_info(),
             data=self.calculation.data,
             result=self.calculation.result,
             lines=self.calculation.lines,
@@ -44,6 +52,21 @@ class ExcelExportTests(unittest.TestCase):
         self.assertEqual(workbook["Сводка"]["B5"].value, "02.11.2026")
         self.assertEqual(workbook["Смета"].max_row, 37)
         self.assertEqual(workbook["Смета"]["C36"].value, "=SUM(J6:J33)")
+
+    def test_object_questionnaire_is_exported_as_non_engineering_context(self) -> None:
+        workbook = self._workbook()
+        ws = workbook["Исходные данные"]
+        values = {
+            ws.cell(row=row, column=1).value: (
+                ws.cell(row=row, column=2).value,
+                ws.cell(row=row, column=5).value,
+            )
+            for row in range(5, ws.max_row + 1)
+        }
+        self.assertEqual(values["Площадь дома"], (100, "Пока не влияет на формулу"))
+        self.assertEqual(values["Этажность"], (2, "Пока не влияет на формулу"))
+        self.assertEqual(values["Материал стен"], ("Porotherm", "Пока не влияет на формулу"))
+        self.assertEqual(values["Условие по грунту"], ("Неизвестен", "Пока не влияет на формулу"))
 
     def test_concrete_line_keeps_formula_quantity_and_demo_price(self) -> None:
         workbook = self._workbook()
