@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from io import BytesIO
 import logging
 import re
 import time
+import uuid
 
 from telegram import InputFile, ReplyKeyboardMarkup, Update
 from telegram.ext import (
@@ -18,9 +20,23 @@ from telegram.ext import (
     filters,
 )
 
+from smeta_estimator.ai import (
+    PlanRecognition,
+    TaynikVisionConfig,
+    TaynikVisionError,
+    recognize_plan_bytes,
+)
 from smeta_estimator.excel import build_foundation_workbook, foundation_workbook_filename
 from smeta_estimator.foundation import FoundationValidationError
 
+from .ai_service import (
+    HourlyRateLimiter,
+    ImagePreparationError,
+    PreparedImage,
+    apply_recognition_to_draft,
+    prepare_image,
+    recognition_summary,
+)
 from .config import BotConfig
 from .service import (
     EDIT_FIELDS,
@@ -51,6 +67,8 @@ LOGGER = logging.getLogger(__name__)
     EDIT,
 ) = range(14)
 
+AI_CONSENT, AI_IMAGE = range(100, 102)
+
 BUTTON_NEW = "🧮 Новый расчёт"
 BUTTON_INFO = "ℹ️ Что рассчитывает бот"
 BUTTON_HELP = "❓ Помощь"
@@ -60,6 +78,11 @@ BUTTON_REPEAT = "🔁 Повторить с изменениями"
 BUTTON_EXPLAIN = "ℹ️ Пояснения к смете"
 BUTTON_CALCULATE = "✅ Рассчитать"
 BUTTON_EDIT = "✏️ Изменить параметры"
+BUTTON_AI = "📐 Распознать план дома"
+BUTTON_AI_UPLOAD = "📎 Загрузить изображение"
+BUTTON_AI_CONFIRM = "✅ Подтвердить параметры"
+BUTTON_AI_MANUAL = "✏️ Ввести вручную"
+BUTTON_AI_RETRY = "🔄 Загрузить другое изображение"
 
 SHAPE_RECTANGULAR = "Прямоугольный дом"
 SHAPE_COMPLEX = "Сложная форма"
@@ -86,18 +109,41 @@ def _keyboard(rows: list[list[str]], *, include_navigation: bool = True) -> Repl
     return ReplyKeyboardMarkup(values, resize_keyboard=True, one_time_keyboard=True)
 
 
-MAIN_KEYBOARD = _keyboard(
-    [[BUTTON_NEW], [BUTTON_INFO, BUTTON_HELP]],
-    include_navigation=False,
-)
-POST_RESULT_KEYBOARD = _keyboard(
-    [[BUTTON_NEW], [BUTTON_REPEAT], [BUTTON_EXPLAIN]],
-    include_navigation=False,
-)
 CONFIRM_KEYBOARD = _keyboard(
     [[BUTTON_CALCULATE], [BUTTON_EDIT], [BUTTON_BACK, BUTTON_CANCEL]],
     include_navigation=False,
 )
+AI_CONSENT_KEYBOARD = _keyboard(
+    [[BUTTON_AI_UPLOAD], [BUTTON_BACK, BUTTON_CANCEL]],
+    include_navigation=False,
+)
+AI_RESULT_KEYBOARD = _keyboard(
+    [[BUTTON_AI_CONFIRM], [BUTTON_AI_MANUAL], [BUTTON_AI_RETRY], [BUTTON_CANCEL]],
+    include_navigation=False,
+)
+
+
+def _main_keyboard(config: BotConfig) -> ReplyKeyboardMarkup:
+    rows = [[BUTTON_NEW]]
+    if config.ai_enabled:
+        rows.append([BUTTON_AI])
+    rows.append([BUTTON_INFO, BUTTON_HELP])
+    return _keyboard(rows, include_navigation=False)
+
+
+def _post_result_keyboard(config: BotConfig) -> ReplyKeyboardMarkup:
+    rows = [[BUTTON_NEW], [BUTTON_REPEAT], [BUTTON_EXPLAIN]]
+    if config.ai_enabled:
+        rows.append([BUTTON_AI])
+    return _keyboard(rows, include_navigation=False)
+
+
+def _config(context: ContextTypes.DEFAULT_TYPE) -> BotConfig:
+    return context.application.bot_data["config"]
+
+
+def _main_markup(context: ContextTypes.DEFAULT_TYPE) -> ReplyKeyboardMarkup:
+    return _main_keyboard(_config(context))
 
 
 def _exact_button(value: str):
@@ -124,7 +170,7 @@ def _is_allowed(update: Update, config: BotConfig) -> bool:
 
 
 async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    config: BotConfig = context.application.bot_data["config"]
+    config = _config(context)
     if _is_allowed(update, config):
         return True
     if update.effective_message:
@@ -140,7 +186,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "и формирует Excel.\n\n"
         "Цены тестовые. Этажность, материал стен и грунт сохраняются в исходных "
         "данных, но пока не меняют формулу.",
-        reply_markup=MAIN_KEYBOARD,
+        reply_markup=_main_markup(context),
     )
 
 
@@ -149,8 +195,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     await update.effective_message.reply_text(
         "/new — новый расчёт\n/cancel — отменить текущий расчёт\n/help — помощь\n\n"
-        "Размеры вводятся в метрах. Допустимы точка и запятая.",
-        reply_markup=MAIN_KEYBOARD,
+        "Размеры вводятся в метрах. Допустимы точка и запятая. "
+        "Если доступна кнопка распознавания, загружайте только обезличенные JPG/PNG.",
+        reply_markup=_main_markup(context),
     )
 
 
@@ -162,7 +209,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "ростверка, шаг, диаметр и длина свай. Площадь, этажность, материал стен и "
         "условие по грунту пока выводятся как справочные исходные данные.\n\n"
         "Расчёт предварительный и не заменяет проект конструктора или геологию.",
-        reply_markup=MAIN_KEYBOARD,
+        reply_markup=_main_markup(context),
     )
 
 
@@ -173,8 +220,209 @@ async def explain_estimate(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "Excel содержит 4 листа: сводку, исходные данные, смету и источники цен. "
         "Полный итог не показывается, если у строки нет подтверждённого объёма или цены. "
         "Жёлтым отмечены значения, которые требуют проверки.",
-        reply_markup=POST_RESULT_KEYBOARD,
+        reply_markup=_post_result_keyboard(_config(context)),
     )
+
+
+async def ai_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_access(update, context):
+        return ConversationHandler.END
+    if not _config(context).ai_enabled:
+        await update.effective_message.reply_text(
+            "Распознавание планов пока выключено.",
+            reply_markup=_main_markup(context),
+        )
+        return ConversationHandler.END
+    await update.effective_message.reply_text(
+        "Перед загрузкой:\n\n"
+        "• изображение будет передано внешнему AI-сервису Taynik;\n"
+        "• удалите ФИО, адреса, телефоны и другие данные клиента;\n"
+        f"• поддерживаются JPG и PNG до {_config(context).ai_max_file_bytes // 1_000_000} МБ;\n"
+        "• результат предварительный и требует проверки сметчиком;\n"
+        "• ИИ не выбирает фундамент и не рассчитывает стоимость.",
+        reply_markup=AI_CONSENT_KEYBOARD,
+    )
+    return AI_CONSENT
+
+
+async def ai_request_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not _config(context).ai_enabled:
+        await update.effective_message.reply_text(
+            "Распознавание планов пока выключено.",
+            reply_markup=_main_markup(context),
+        )
+        return ConversationHandler.END
+    await update.effective_message.reply_text(
+        "Отправьте одно обезличенное изображение как фотографию или файл JPG/PNG.",
+        reply_markup=_keyboard([[BUTTON_BACK, BUTTON_CANCEL]], include_navigation=False),
+    )
+    return AI_IMAGE
+
+
+async def _ai_back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(
+        "Загрузка изображения отменена.",
+        reply_markup=_main_markup(context),
+    )
+    return ConversationHandler.END
+
+
+async def _ai_invalid_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.effective_message.reply_text(
+        "Отправьте JPG или PNG как фотографию или файл. PDF пока не поддерживается.",
+        reply_markup=_keyboard([[BUTTON_BACK, BUTTON_CANCEL]], include_navigation=False),
+    )
+    return AI_IMAGE
+
+
+async def receive_ai_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    config = _config(context)
+    message = update.effective_message
+    user = update.effective_user
+    if not config.ai_enabled or user is None:
+        return await _ai_back_to_main(update, context)
+    if context.user_data.get("ai_in_progress"):
+        await message.reply_text("Ваше предыдущее изображение ещё обрабатывается.")
+        return ConversationHandler.END
+
+    telegram_file = None
+    file_size = None
+    if message.photo:
+        photo = message.photo[-1]
+        telegram_file = await photo.get_file()
+        file_size = photo.file_size
+    elif message.document and message.document.mime_type in {"image/jpeg", "image/png"}:
+        telegram_file = await message.document.get_file()
+        file_size = message.document.file_size
+    if telegram_file is None:
+        return await _ai_invalid_image(update, context)
+    if file_size is not None and file_size > config.ai_max_file_bytes:
+        await message.reply_text(
+            f"Файл больше лимита {config.ai_max_file_bytes // 1_000_000} МБ.",
+            reply_markup=_keyboard([[BUTTON_BACK, BUTTON_CANCEL]], include_navigation=False),
+        )
+        return AI_IMAGE
+
+    try:
+        raw = bytes(await telegram_file.download_as_bytearray())
+        prepared = await asyncio.to_thread(
+            prepare_image,
+            raw,
+            max_file_bytes=config.ai_max_file_bytes,
+            max_dimension=config.ai_max_image_dimension,
+        )
+    except ImagePreparationError as error:
+        await message.reply_text(
+            str(error),
+            reply_markup=_keyboard([[BUTTON_BACK, BUTTON_CANCEL]], include_navigation=False),
+        )
+        return AI_IMAGE
+    except Exception:
+        LOGGER.exception("Failed to download or prepare Telegram image")
+        await message.reply_text(
+            "Не удалось прочитать изображение. Попробуйте другой JPG или PNG.",
+            reply_markup=_main_markup(context),
+        )
+        return ConversationHandler.END
+
+    limiter: HourlyRateLimiter = context.application.bot_data["ai_rate_limiter"]
+    if not limiter.allow(user.id):
+        await message.reply_text(
+            f"Достигнут тестовый лимит: {config.ai_max_requests_per_hour} "
+            "распознавания в час. Попробуйте позже.",
+            reply_markup=_main_markup(context),
+        )
+        return ConversationHandler.END
+
+    job_id = uuid.uuid4().hex
+    context.user_data["ai_in_progress"] = True
+    context.user_data["ai_job_id"] = job_id
+    await message.reply_text(
+        "⏳ Распознаю план. Это может занять 1–3 минуты. "
+        "Бот продолжит принимать обычные команды.",
+        reply_markup=_main_markup(context),
+    )
+    context.application.create_task(
+        _process_ai_image(update, context, prepared, job_id),
+        update=update,
+        name=f"recognize-plan-{user.id}",
+    )
+    return ConversationHandler.END
+
+
+async def _process_ai_image(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    prepared: PreparedImage,
+    job_id: str,
+) -> None:
+    chat = update.effective_chat
+    if chat is None:
+        context.user_data.pop("ai_in_progress", None)
+        return
+    semaphore: asyncio.Semaphore = context.application.bot_data["ai_semaphore"]
+    ai_config: TaynikVisionConfig = context.application.bot_data["ai_config"]
+    try:
+        async with semaphore:
+            recognition, diagnostics = await asyncio.to_thread(
+                recognize_plan_bytes,
+                prepared.content,
+                prepared.mime_type,
+                ai_config,
+            )
+        if context.user_data.get("ai_job_id") != job_id:
+            LOGGER.info("AI recognition result discarded after user cancellation")
+            return
+        context.user_data["ai_recognition"] = recognition
+        LOGGER.info(
+            "AI recognition completed: user=%s latency=%s model=%s image=%sx%s",
+            update.effective_user.id if update.effective_user else "unknown",
+            diagnostics.get("latency_seconds"),
+            diagnostics.get("response_model"),
+            prepared.width,
+            prepared.height,
+        )
+        await context.application.bot.send_message(
+            chat_id=chat.id,
+            text=recognition_summary(recognition),
+            reply_markup=AI_RESULT_KEYBOARD,
+        )
+    except TaynikVisionError as error:
+        LOGGER.warning("AI recognition rejected: %s", error)
+        await context.application.bot.send_message(
+            chat_id=chat.id,
+            text=f"Не удалось распознать изображение: {error}",
+            reply_markup=_main_markup(context),
+        )
+    except Exception:
+        LOGGER.exception("Unexpected AI recognition failure")
+        await context.application.bot.send_message(
+            chat_id=chat.id,
+            text="Не удалось распознать изображение. Ошибка записана без самого файла.",
+            reply_markup=_main_markup(context),
+        )
+    finally:
+        if context.user_data.get("ai_job_id") == job_id:
+            context.user_data.pop("ai_in_progress", None)
+            context.user_data.pop("ai_job_id", None)
+
+
+async def accept_ai_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _require_access(update, context):
+        return ConversationHandler.END
+    recognition = context.user_data.get("ai_recognition")
+    if not isinstance(recognition, PlanRecognition):
+        await update.effective_message.reply_text(
+            "Нет готового результата распознавания. Загрузите изображение ещё раз.",
+            reply_markup=_main_markup(context),
+        )
+        return ConversationHandler.END
+    context.user_data.clear()
+    draft = FoundationDraft()
+    apply_recognition_to_draft(recognition, draft)
+    context.user_data["draft"] = draft
+    context.user_data["ai_prefill_active"] = True
+    return await _prompt_object(update, context)
 
 
 async def _prompt_object(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -275,6 +523,34 @@ async def _prompt_confirmation(update: Update, context: ContextTypes.DEFAULT_TYP
     return _set_state(context, CONFIRM)
 
 
+async def _continue_ai_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Спросить только те поля, которых нет после подтверждения AI-подсказок."""
+    draft = _draft(context)
+    if not draft.shape:
+        return await _prompt_shape(update, context)
+    if draft.shape == SHAPE_RECTANGULAR:
+        if draft.house_length_m is None:
+            return await _prompt_house_length(update, context)
+        if draft.house_width_m is None:
+            return await _prompt_house_width(update, context)
+        draft.set_rectangular_geometry(draft.house_length_m, draft.house_width_m)
+    else:
+        if draft.outer_wall_length_m is None:
+            return await _prompt_outer_length(update, context)
+        if draft.area_m2 is None:
+            return await _prompt_area(update, context)
+    if draft.inner_wall_length_m is None:
+        return await _prompt_inner_length(update, context)
+    if draft.storeys is None:
+        return await _prompt_storeys(update, context)
+    if not draft.wall_material:
+        return await _prompt_wall_material(update, context)
+    if not draft.soil_condition:
+        return await _prompt_soil(update, context)
+    context.user_data.pop("ai_prefill_active", None)
+    return await _prompt_parameters_mode(update, context)
+
+
 async def new_estimate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await _require_access(update, context):
         return ConversationHandler.END
@@ -299,19 +575,26 @@ async def receive_object(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text("Введите название длиной от 1 до 80 символов.")
         return OBJECT
     _draft(context).object_name = name
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_shape(update, context)
 
 
 async def receive_shape(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     value = (update.effective_message.text or "").strip()
     if value == SHAPE_RECTANGULAR:
-        _draft(context).shape = value
+        draft = _draft(context)
+        draft.shape = value
+        if context.user_data.get("ai_prefill_active"):
+            return await _continue_ai_draft(update, context)
         return await _prompt_house_length(update, context)
     if value == SHAPE_COMPLEX:
         draft = _draft(context)
         draft.shape = value
         draft.house_length_m = None
         draft.house_width_m = None
+        if context.user_data.get("ai_prefill_active"):
+            return await _continue_ai_draft(update, context)
         return await _prompt_outer_length(update, context)
     await update.effective_message.reply_text("Выберите форму кнопкой.")
     return SHAPE
@@ -323,6 +606,10 @@ async def receive_house_length(update: Update, context: ContextTypes.DEFAULT_TYP
     except ValueError as exc:
         await update.effective_message.reply_text(str(exc))
         return HOUSE_LENGTH
+    if context.user_data.get("ai_prefill_active") and _draft(context).house_width_m is not None:
+        draft = _draft(context)
+        draft.set_rectangular_geometry(draft.house_length_m, draft.house_width_m)
+        return await _continue_ai_draft(update, context)
     return await _prompt_house_width(update, context)
 
 
@@ -336,6 +623,8 @@ async def receive_house_width(update: Update, context: ContextTypes.DEFAULT_TYPE
     if draft.house_length_m is None:
         return await _prompt_house_length(update, context)
     draft.set_rectangular_geometry(draft.house_length_m, width)
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_inner_length(update, context)
 
 
@@ -345,6 +634,8 @@ async def receive_outer_length(update: Update, context: ContextTypes.DEFAULT_TYP
     except ValueError as exc:
         await update.effective_message.reply_text(str(exc))
         return OUTER_LENGTH
+    if context.user_data.get("ai_prefill_active") and _draft(context).area_m2 is not None:
+        return await _continue_ai_draft(update, context)
     return await _prompt_area(update, context)
 
 
@@ -354,6 +645,8 @@ async def receive_area(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     except ValueError as exc:
         await update.effective_message.reply_text(str(exc))
         return AREA
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_inner_length(update, context)
 
 
@@ -368,6 +661,8 @@ async def receive_inner_length(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.effective_message.reply_text(str(exc))
             return INNER_LENGTH
     _draft(context).inner_wall_length_m = value
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_storeys(update, context)
 
 
@@ -377,6 +672,8 @@ async def receive_storeys(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.effective_message.reply_text("Выберите этажность кнопкой.")
         return STOREYS
     _draft(context).storeys = STOREY_OPTIONS[text]
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_wall_material(update, context)
 
 
@@ -386,6 +683,8 @@ async def receive_wall_material(update: Update, context: ContextTypes.DEFAULT_TY
         await update.effective_message.reply_text("Выберите материал кнопкой.")
         return WALL_MATERIAL
     _draft(context).wall_material = text
+    if context.user_data.get("ai_prefill_active"):
+        return await _continue_ai_draft(update, context)
     return await _prompt_soil(update, context)
 
 
@@ -395,6 +694,7 @@ async def receive_soil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.effective_message.reply_text("Выберите вариант грунта кнопкой.")
         return SOIL
     _draft(context).soil_condition = text
+    context.user_data.pop("ai_prefill_active", None)
     return await _prompt_parameters_mode(update, context)
 
 
@@ -530,14 +830,14 @@ async def _send_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         details = "\n".join(f"• {issue.field}: {issue.message}" for issue in exc.issues)
         await update.effective_message.reply_text(
             f"Расчёт не выполнен. Проверьте параметры:\n{details}",
-            reply_markup=MAIN_KEYBOARD,
+            reply_markup=_main_markup(context),
         )
         return ConversationHandler.END
     except Exception:
         LOGGER.exception("Failed to create foundation estimate")
         await update.effective_message.reply_text(
             "Не удалось сформировать файл. Ошибка записана в журнал без исходных данных пользователя.",
-            reply_markup=MAIN_KEYBOARD,
+            reply_markup=_main_markup(context),
         )
         return ConversationHandler.END
 
@@ -560,7 +860,7 @@ async def _send_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             "Предварительная смета фундамента. Цены тестовые, "
             "актуальность и регион не подтверждены."
         ),
-        reply_markup=POST_RESULT_KEYBOARD,
+        reply_markup=_post_result_keyboard(_config(context)),
     )
     last_draft = deepcopy(draft)
     context.user_data.clear()
@@ -572,7 +872,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await _require_access(update, context):
         return ConversationHandler.END
     context.user_data.clear()
-    await update.effective_message.reply_text("Текущий расчёт отменён.", reply_markup=MAIN_KEYBOARD)
+    await update.effective_message.reply_text(
+        "Текущий расчёт отменён.", reply_markup=_main_markup(context)
+    )
     return ConversationHandler.END
 
 
@@ -584,18 +886,61 @@ def _state_handlers(handler) -> list:
     ]
 
 
-def build_application(config: BotConfig) -> Application:
+def build_application(
+    config: BotConfig,
+    *,
+    ai_config: TaynikVisionConfig | None = None,
+) -> Application:
+    if config.ai_enabled and ai_config is None:
+        raise ValueError("ai_config is required when AI_ENABLED=true")
     application = Application.builder().token(config.token).concurrent_updates(False).build()
     application.bot_data["config"] = config
+    application.bot_data["ai_config"] = ai_config
+    application.bot_data["ai_rate_limiter"] = HourlyRateLimiter(
+        config.ai_max_requests_per_hour
+    )
+    application.bot_data["ai_semaphore"] = asyncio.Semaphore(
+        config.ai_max_concurrent_requests
+    )
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(
         ConversationHandler(
             entry_points=[
+                MessageHandler(_exact_button(BUTTON_AI), ai_start),
+                MessageHandler(_exact_button(BUTTON_AI_RETRY), ai_request_upload),
+            ],
+            states={
+                AI_CONSENT: [
+                    MessageHandler(_exact_button(BUTTON_AI_UPLOAD), ai_request_upload),
+                    MessageHandler(_exact_button(BUTTON_BACK), _ai_back_to_main),
+                    MessageHandler(_exact_button(BUTTON_CANCEL), _ai_back_to_main),
+                ],
+                AI_IMAGE: [
+                    MessageHandler(_exact_button(BUTTON_BACK), _ai_back_to_main),
+                    MessageHandler(_exact_button(BUTTON_CANCEL), _ai_back_to_main),
+                    MessageHandler(
+                        filters.PHOTO
+                        | filters.Document.MimeType("image/jpeg")
+                        | filters.Document.MimeType("image/png"),
+                        receive_ai_image,
+                    ),
+                    MessageHandler(filters.ALL & ~filters.COMMAND, _ai_invalid_image),
+                ],
+            },
+            fallbacks=[CommandHandler("cancel", _ai_back_to_main)],
+            allow_reentry=True,
+        )
+    )
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[
                 CommandHandler("new", new_estimate),
                 MessageHandler(_exact_button(BUTTON_NEW), new_estimate),
                 MessageHandler(_exact_button(BUTTON_REPEAT), repeat_estimate),
+                MessageHandler(_exact_button(BUTTON_AI_CONFIRM), accept_ai_result),
+                MessageHandler(_exact_button(BUTTON_AI_MANUAL), new_estimate),
             ],
             states={
                 OBJECT: _state_handlers(receive_object),
@@ -637,12 +982,19 @@ def run() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     config = BotConfig.from_env()
+    ai_config = TaynikVisionConfig.from_env() if config.ai_enabled else None
     if config.startup_delay_seconds:
         LOGGER.info("Waiting %.1f seconds before Telegram polling", config.startup_delay_seconds)
         time.sleep(config.startup_delay_seconds)
-    application = build_application(config)
+    application = build_application(config, ai_config=ai_config)
     if config.allowed_user_ids:
         LOGGER.info("Starting Telegram polling for %d allowed user(s)", len(config.allowed_user_ids))
     else:
         LOGGER.info("Starting Telegram polling in public access mode")
+    if config.ai_enabled:
+        LOGGER.info(
+            "Public AI recognition enabled: %d request(s)/hour/user, %d concurrent",
+            config.ai_max_requests_per_hour,
+            config.ai_max_concurrent_requests,
+        )
     application.run_polling(drop_pending_updates=True)

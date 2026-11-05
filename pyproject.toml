@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "openpyxl==3.1.5",
     "python-telegram-bot==22.8",
+    "Pillow==13.0.0",
 ]
 
 [tool.setuptools.packages.find]

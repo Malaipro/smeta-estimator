@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import base64
 import json
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -83,10 +84,13 @@ class TaynikVisionError(RuntimeError):
 def _safe_api_error_detail(error: HTTPError) -> str | None:
     """Извлечь короткое сообщение провайдера, не печатая сырое тело ответа."""
     try:
-        raw = error.read(32_768).decode("utf-8", errors="replace")
-        data = json.loads(raw)
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
+        try:
+            raw = error.read(32_768).decode("utf-8", errors="replace")
+            data = json.loads(raw)
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+    finally:
+        error.close()
 
     candidate: Any = None
     if isinstance(data, dict):
@@ -228,14 +232,24 @@ def _optional_positive_number(data: Mapping[str, Any], field: str) -> float | No
     value = data[field]
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+        or value > 1_000_000
+    ):
         raise TaynikVisionError(f"Поле {field} должно быть положительным числом или null.")
     return float(value)
 
 
 def _string_list(data: Mapping[str, Any], field: str) -> list[str]:
     value = data[field]
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+    if (
+        not isinstance(value, list)
+        or len(value) > 20
+        or any(not isinstance(item, str) or len(item) > 500 for item in value)
+    ):
         raise TaynikVisionError(f"Поле {field} должно быть списком строк.")
     return value
 
@@ -261,13 +275,18 @@ def parse_recognition_content(content: str) -> PlanRecognition:
 
     storeys = data["storeys"]
     if storeys is not None and (
-        isinstance(storeys, bool) or not isinstance(storeys, int) or storeys <= 0
+        isinstance(storeys, bool)
+        or not isinstance(storeys, int)
+        or storeys <= 0
+        or storeys > 100
     ):
         raise TaynikVisionError("Поле storeys должно быть положительным целым или null.")
 
     wall_material = data["wall_material"]
     if wall_material is not None and (
-        not isinstance(wall_material, str) or not wall_material.strip()
+        not isinstance(wall_material, str)
+        or not wall_material.strip()
+        or len(wall_material) > 100
     ):
         raise TaynikVisionError("Поле wall_material должно быть строкой или null.")
 
@@ -389,6 +408,29 @@ def recognize_plan(
     opener=urlopen,
 ) -> tuple[PlanRecognition, dict[str, Any]]:
     image_bytes, mime_type = _read_image(Path(image_path), config.max_image_bytes)
+    return recognize_plan_bytes(
+        image_bytes,
+        mime_type,
+        config,
+        opener=opener,
+    )
+
+
+def recognize_plan_bytes(
+    image_bytes: bytes,
+    mime_type: str,
+    config: TaynikVisionConfig,
+    *,
+    opener=urlopen,
+) -> tuple[PlanRecognition, dict[str, Any]]:
+    if mime_type not in SUPPORTED_IMAGE_TYPES.values():
+        raise TaynikVisionError("Поддерживаются только JPG и PNG.")
+    if not image_bytes:
+        raise TaynikVisionError("Файл изображения пуст.")
+    if len(image_bytes) > config.max_image_bytes:
+        raise TaynikVisionError(
+            f"Изображение больше тестового лимита {config.max_image_bytes} байт."
+        )
     payload = build_chat_payload(image_bytes, mime_type, config.model)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     endpoint = f"{config.base_url.rstrip('/')}/chat/completions"

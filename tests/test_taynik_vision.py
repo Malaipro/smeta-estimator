@@ -105,6 +105,11 @@ class TaynikVisionTests(unittest.TestCase):
         with self.assertRaisesRegex(TaynikVisionError, "length_m"):
             parse_recognition_content(json.dumps(data))
 
+    def test_parser_rejects_non_finite_measurement(self) -> None:
+        data = {**VALID_DATA, "length_m": float("nan")}
+        with self.assertRaisesRegex(TaynikVisionError, "length_m"):
+            parse_recognition_content(json.dumps(data))
+
     def test_recognize_plan_sends_request_and_parses_response(self) -> None:
         captured = {}
 

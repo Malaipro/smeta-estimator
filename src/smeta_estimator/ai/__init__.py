@@ -6,6 +6,7 @@ from .taynik_vision import (
     TaynikVisionError,
     check_gateway_access,
     recognize_plan,
+    recognize_plan_bytes,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "TaynikVisionError",
     "check_gateway_access",
     "recognize_plan",
+    "recognize_plan_bytes",
 ]

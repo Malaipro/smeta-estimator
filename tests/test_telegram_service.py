@@ -2,6 +2,8 @@ from decimal import Decimal
 import unittest
 
 from smeta_estimator.telegram_bot import build_application
+from smeta_estimator.ai import TaynikVisionConfig
+from smeta_estimator.telegram_bot.app import BUTTON_AI, _main_keyboard
 from smeta_estimator.telegram_bot.config import BotConfig, BotConfigError
 from smeta_estimator.telegram_bot.service import (
     FoundationDraft,
@@ -54,6 +56,21 @@ class TelegramServiceTests(unittest.TestCase):
     def test_config_is_public_by_default(self) -> None:
         config = BotConfig.from_env({"TELEGRAM_BOT_TOKEN": "token"})
         self.assertEqual(config.allowed_user_ids, frozenset())
+        self.assertFalse(config.ai_enabled)
+        self.assertEqual(config.ai_max_requests_per_hour, 3)
+
+    def test_config_parses_public_ai_limits(self) -> None:
+        config = BotConfig.from_env(
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "AI_ENABLED": "true",
+                "AI_MAX_REQUESTS_PER_HOUR": "4",
+                "AI_MAX_CONCURRENT_REQUESTS": "1",
+            }
+        )
+        self.assertTrue(config.ai_enabled)
+        self.assertEqual(config.ai_max_requests_per_hour, 4)
+        self.assertEqual(config.ai_max_concurrent_requests, 1)
 
     def test_config_rejects_invalid_allowed_ids(self) -> None:
         with self.assertRaises(BotConfigError):
@@ -85,6 +102,26 @@ class TelegramServiceTests(unittest.TestCase):
         )
         self.assertEqual(application.update_processor.max_concurrent_updates, 1)
         self.assertGreaterEqual(len(application.handlers[0]), 4)
+
+    def test_ai_button_is_hidden_until_feature_is_enabled(self) -> None:
+        disabled = BotConfig(token="token", allowed_user_ids=frozenset())
+        enabled = BotConfig(
+            token="token", allowed_user_ids=frozenset(), ai_enabled=True
+        )
+        disabled_labels = [
+            button.text for row in _main_keyboard(disabled).keyboard for button in row
+        ]
+        enabled_labels = [
+            button.text for row in _main_keyboard(enabled).keyboard for button in row
+        ]
+        self.assertNotIn(BUTTON_AI, disabled_labels)
+        self.assertIn(BUTTON_AI, enabled_labels)
+
+        application = build_application(
+            enabled,
+            ai_config=TaynikVisionConfig(api_key="tk_ai_test"),
+        )
+        self.assertIsNotNone(application.bot_data["ai_config"])
 
 
 if __name__ == "__main__":
